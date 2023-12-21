@@ -24,8 +24,11 @@ class MyEventHandler(TranscriptResultStreamHandler):
         # Here's an example to get started.
         results = transcript_event.transcript.results
         for result in results:
-            for alt in result.alternatives:
-                print(alt.transcript)
+            print(result.alternatives[0].transcript)
+            break
+            # for alt in result.alternatives:
+            #     print(alt.transcript)
+                
 
 
 async def mic_stream():
