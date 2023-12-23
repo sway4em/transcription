@@ -1,4 +1,7 @@
 import asyncio
+import boto3
+
+client = boto3.client('bedrock')
 
 # This example uses the sounddevice library to get an audio stream from the
 # microphone. It's not a dependency of the project but can be installed with
