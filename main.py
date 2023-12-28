@@ -2,6 +2,8 @@ import asyncio
 import boto3
 import os
 from openai import OpenAI
+import pygame
+from io import BytesIO
 # This example uses the sounddevice library to get an audio stream from the
 # microphone. It's not a dependency of the project but can be installed with
 # `pip install sounddevice`.
@@ -16,6 +18,7 @@ client = OpenAI(
     
     api_key=os.environ["OPENAI_API_KEY"]
 )
+polly_client = boto3.client('polly', region_name='us-west-2')
 
 """
 Here's an example of a custom event handler you can extend to
@@ -33,6 +36,21 @@ def get_response(message):
         model="gpt-3.5-turbo",
     )
     return chat_completion.choices[0].message.content
+
+def synthesize_speech(text):
+    response = polly_client.synthesize_speech(VoiceId='Joanna',
+                                              OutputFormat='mp3',
+                                              Text=text)
+    return response['AudioStream'].read()
+
+def play_audio(audio_data):
+    pygame.mixer.init()
+    with BytesIO(audio_data) as audio_stream:
+        pygame.mixer.music.load(audio_stream)
+        pygame.mixer.music.play()
+        print("Playing audio response...")
+        while pygame.mixer.music.get_busy():
+            asyncio.sleep(0.1)
 
 message = ""
 
@@ -66,9 +84,19 @@ class MyEventHandler(TranscriptResultStreamHandler):
                 self.last_final_time = now
 
         if self.last_final_time and (now - self.last_final_time) > self.silence_threshold:
+            # print("Speech considered complete after silence.")
+            # response = get_response(self.current_transcript)
+            # print("Response:", response)
+            # self.current_transcript = ""
+            # self.partial_transcript = ""
+            # self.last_final_time = None
             print("Speech considered complete after silence.")
             response = get_response(self.current_transcript)
             print("Response:", response)
+            print("Synthesizing response...")
+            audio_data = synthesize_speech(response)
+            print("Playing audio response...")
+            play_audio(audio_data)
             self.current_transcript = ""
             self.partial_transcript = ""
             self.last_final_time = None
