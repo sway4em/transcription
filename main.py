@@ -1,6 +1,6 @@
 import asyncio
 import boto3
-
+import openai
 client = boto3.client('bedrock')
 
 # This example uses the sounddevice library to get an audio stream from the

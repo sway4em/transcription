@@ -1,0 +1,4 @@
+boto3
+sounddevice
+amazon_transcribe
+openai
