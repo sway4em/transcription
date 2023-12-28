@@ -49,24 +49,29 @@ class MyEventHandler(TranscriptResultStreamHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.current_transcript = ""
-        self.last_update_time = None
+        self.partial_transcript = ""
+        self.last_final_time = None
         self.silence_threshold = 3  # seconds
 
     async def handle_transcript_event(self, transcript_event: TranscriptEvent):
         now = asyncio.get_event_loop().time()
         results = transcript_event.transcript.results
         for result in results:
-            if not result.is_partial:
+            if result.is_partial:
+                self.partial_transcript = ' '.join([alt.transcript for alt in result.alternatives])
+                print("Partial:", self.partial_transcript)
+            else:
                 self.current_transcript = ' '.join([alt.transcript for alt in result.alternatives])
-                print("You said:", self.current_transcript)
-                self.last_update_time = now
+                print("Final:", self.current_transcript)
+                self.last_final_time = now
 
-        if self.last_update_time and (now - self.last_update_time) > self.silence_threshold:
+        if self.last_final_time and (now - self.last_final_time) > self.silence_threshold:
             print("Speech considered complete after silence.")
             response = get_response(self.current_transcript)
             print("Response:", response)
             self.current_transcript = ""
-            self.last_update_time = None
+            self.partial_transcript = ""
+            self.last_final_time = None
 
 async def mic_stream():
     # This function wraps the raw input stream from the microphone forwarding
