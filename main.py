@@ -4,6 +4,7 @@ import os
 from openai import OpenAI
 import pygame
 from io import BytesIO
+import requests
 # This example uses the sounddevice library to get an audio stream from the
 # microphone. It's not a dependency of the project but can be installed with
 # `pip install sounddevice`.
@@ -13,6 +14,12 @@ import sounddevice
 from amazon_transcribe.client import TranscribeStreamingClient
 from amazon_transcribe.handlers import TranscriptResultStreamHandler
 from amazon_transcribe.model import TranscriptEvent
+API_URL = "https://api-inference.huggingface.co/models/dslim/bert-base-NER"
+headers = {"Authorization":f"Bearer {os.environ['HF_KEY']}"}
+
+def query(payload):
+	response = requests.post(API_URL, headers=headers, json=payload)
+	return response.json()
 client = OpenAI(
     # This is the default and can be omitted
     
@@ -70,6 +77,7 @@ class MyEventHandler(TranscriptResultStreamHandler):
         self.partial_transcript = ""
         self.last_final_time = None
         self.silence_threshold = 3  # seconds
+        self.person_name = None  # To store the identified person's name
 
     async def handle_transcript_event(self, transcript_event: TranscriptEvent):
         now = asyncio.get_event_loop().time()
@@ -83,13 +91,11 @@ class MyEventHandler(TranscriptResultStreamHandler):
                 print("Final:", self.current_transcript)
                 self.last_final_time = now
 
+                # Check for a person's name if not already found
+                if not self.person_name:
+                    self.check_for_name(self.current_transcript)
+
         if self.last_final_time and (now - self.last_final_time) > self.silence_threshold:
-            # print("Speech considered complete after silence.")
-            # response = get_response(self.current_transcript)
-            # print("Response:", response)
-            # self.current_transcript = ""
-            # self.partial_transcript = ""
-            # self.last_final_time = None
             print("Speech considered complete after silence.")
             response = get_response(self.current_transcript)
             print("Response:", response)
@@ -100,6 +106,14 @@ class MyEventHandler(TranscriptResultStreamHandler):
             self.current_transcript = ""
             self.partial_transcript = ""
             self.last_final_time = None
+
+    def check_for_name(self, text):
+        output = query({"inputs": text})
+        for out in output:
+            if out["entity_group"] == "PER":
+                self.person_name = out["word"]
+                print(f"The person's name is {self.person_name}")
+                break  # Stop after identifying the name
 
 async def mic_stream():
     # This function wraps the raw input stream from the microphone forwarding
