@@ -2,7 +2,6 @@ boto3
 sounddevice
 amazon_transcribe
 openai
-pygame
 requests
 pydub
 simpleaudio
