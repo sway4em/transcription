@@ -1,8 +1,7 @@
 import asyncio
 import boto3
-import openai
-client = boto3.client('bedrock')
-
+import os
+from openai import OpenAI
 # This example uses the sounddevice library to get an audio stream from the
 # microphone. It's not a dependency of the project but can be installed with
 # `pip install sounddevice`.
@@ -12,27 +11,62 @@ import sounddevice
 from amazon_transcribe.client import TranscribeStreamingClient
 from amazon_transcribe.handlers import TranscriptResultStreamHandler
 from amazon_transcribe.model import TranscriptEvent
-
+client = OpenAI(
+    # This is the default and can be omitted
+    
+    api_key=os.environ["OPENAI_API_KEY"]
+)
 
 """
 Here's an example of a custom event handler you can extend to
 process the returned transcription results as needed. This
 handler will simply print the text out to your interpreter.
 """
+def get_response(message):
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": message,
+            }
+        ],
+        model="gpt-3.5-turbo",
+    )
+    return chat_completion.choices[0].message.content
 
+message = ""
 
+# class MyEventHandler(TranscriptResultStreamHandler):
+#     async def handle_transcript_event(self, transcript_event: TranscriptEvent):
+#         # This handler can be implemented to handle transcriptions as needed.
+#         # Here's an example to get started.
+#         results = transcript_event.transcript.results
+#         for result in results:
+#             for alt in result.alternatives:
+#                 print(alt.transcript)
+                
 class MyEventHandler(TranscriptResultStreamHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_transcript = ""
+        self.last_update_time = None
+        self.silence_threshold = 3  # seconds
+
     async def handle_transcript_event(self, transcript_event: TranscriptEvent):
-        # This handler can be implemented to handle transcriptions as needed.
-        # Here's an example to get started.
+        now = asyncio.get_event_loop().time()
         results = transcript_event.transcript.results
         for result in results:
-            print(result.alternatives[0].transcript)
-            break
-            # for alt in result.alternatives:
-            #     print(alt.transcript)
-                
+            if not result.is_partial:
+                self.current_transcript = ' '.join([alt.transcript for alt in result.alternatives])
+                print("You said:", self.current_transcript)
+                self.last_update_time = now
 
+        if self.last_update_time and (now - self.last_update_time) > self.silence_threshold:
+            print("Speech considered complete after silence.")
+            response = get_response(self.current_transcript)
+            print("Response:", response)
+            self.current_transcript = ""
+            self.last_update_time = None
 
 async def mic_stream():
     # This function wraps the raw input stream from the microphone forwarding
@@ -86,5 +120,7 @@ async def basic_transcribe():
 
 
 loop = asyncio.get_event_loop()
-loop.run_until_complete(basic_transcribe())
-loop.close()
+# loop.run_until_complete(basic_transcribe())
+# loop.close()
+if __name__ == "__main__":
+    asyncio.run(basic_transcribe())
