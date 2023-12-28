@@ -5,15 +5,13 @@ from openai import OpenAI
 import pygame
 from io import BytesIO
 import requests
-# This example uses the sounddevice library to get an audio stream from the
-# microphone. It's not a dependency of the project but can be installed with
-# `pip install sounddevice`.
 import sounddevice
 
 
 from amazon_transcribe.client import TranscribeStreamingClient
 from amazon_transcribe.handlers import TranscriptResultStreamHandler
 from amazon_transcribe.model import TranscriptEvent
+
 API_URL = "https://api-inference.huggingface.co/models/dslim/bert-base-NER"
 headers = {"Authorization":f"Bearer {os.environ['HF_KEY']}"}
 
@@ -27,11 +25,6 @@ client = OpenAI(
 )
 polly_client = boto3.client('polly', region_name='us-west-2')
 
-"""
-Here's an example of a custom event handler you can extend to
-process the returned transcription results as needed. This
-handler will simply print the text out to your interpreter.
-"""
 def get_response(message):
     chat_completion = client.chat.completions.create(
         messages=[
@@ -60,15 +53,6 @@ def play_audio(audio_data):
             asyncio.sleep(0.1)
 
 message = ""
-
-# class MyEventHandler(TranscriptResultStreamHandler):
-#     async def handle_transcript_event(self, transcript_event: TranscriptEvent):
-#         # This handler can be implemented to handle transcriptions as needed.
-#         # Here's an example to get started.
-#         results = transcript_event.transcript.results
-#         for result in results:
-#             for alt in result.alternatives:
-#                 print(alt.transcript)
                 
 class MyEventHandler(TranscriptResultStreamHandler):
     def __init__(self, *args, **kwargs):
@@ -167,7 +151,6 @@ async def basic_transcribe():
 
 
 loop = asyncio.get_event_loop()
-# loop.run_until_complete(basic_transcribe())
-# loop.close()
+
 if __name__ == "__main__":
     asyncio.run(basic_transcribe())
