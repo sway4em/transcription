@@ -3,3 +3,4 @@ sounddevice
 amazon_transcribe
 openai
 pygame
+requests
