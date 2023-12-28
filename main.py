@@ -2,16 +2,17 @@ import asyncio
 import boto3
 import os
 from openai import OpenAI
-import pygame
 from io import BytesIO
 import requests
 import sounddevice
-
-
+import simpleaudio as sa
+from pydub import AudioSegment
+import time
 from amazon_transcribe.client import TranscribeStreamingClient
 from amazon_transcribe.handlers import TranscriptResultStreamHandler
 from amazon_transcribe.model import TranscriptEvent
-
+ENABLE_STREAMING = False
+synthesis_time = 0
 API_URL = "https://api-inference.huggingface.co/models/dslim/bert-base-NER"
 headers = {"Authorization":f"Bearer {os.environ['HF_KEY']}"}
 
@@ -37,20 +38,48 @@ def get_response(message):
     )
     return chat_completion.choices[0].message.content
 
-def synthesize_speech(text):
-    response = polly_client.synthesize_speech(VoiceId='Joanna',
-                                              OutputFormat='mp3',
-                                              Text=text)
-    return response['AudioStream'].read()
+def synthesize_speech(text, output_format='mp3', voice='Joanna', enable_streaming=False):
+    start_time = time.time()  # Start the timer
 
-def play_audio(audio_data):
-    pygame.mixer.init()
-    with BytesIO(audio_data) as audio_stream:
-        pygame.mixer.music.load(audio_stream)
-        pygame.mixer.music.play()
-        print("Playing audio response...")
-        while pygame.mixer.music.get_busy():
-            asyncio.sleep(0.1)
+    polly_client = boto3.client('polly', region_name='us-west-2')
+
+    response = polly_client.synthesize_speech(VoiceId=voice,
+                                              OutputFormat=output_format,
+                                              Text=text)
+    synthesis_time = time.time() - start_time  # Measure the time taken
+
+    if enable_streaming:
+        if "AudioStream" in response:
+            return response['AudioStream']
+        else:
+            raise Exception("Could not stream audio from Polly response.")
+    else:
+        if "AudioStream" in response:
+            return response['AudioStream'].read()
+        else:
+            raise Exception("Could not synthesize audio from Polly response.")
+
+def play_audio(audio_data, enable_streaming=False):
+    try:
+        if enable_streaming:
+            with closing(audio_data) as stream:
+                audio_data = stream.read()
+        audio_segment = AudioSegment.from_file(BytesIO(audio_data), format='mp3')
+    except Exception as e:
+        print("Error converting audio data:", e)
+        return
+
+    try:
+        play_obj = sa.play_buffer(
+            audio_segment.raw_data,
+            num_channels=audio_segment.channels,
+            bytes_per_sample=audio_segment.sample_width,
+            sample_rate=audio_segment.frame_rate
+        )
+        play_obj.wait_done()
+    except Exception as e:
+        print("Error playing audio:", e)
+
 
 message = ""
                 
@@ -84,9 +113,10 @@ class MyEventHandler(TranscriptResultStreamHandler):
             response = get_response(self.current_transcript)
             print("Response:", response)
             print("Synthesizing response...")
-            audio_data = synthesize_speech(response)
+            audio_data = synthesize_speech(response, enable_streaming=ENABLE_STREAMING)
+            print(f"Time taken for synthesis: {synthesis_time:.2f} seconds")
             print("Playing audio response...")
-            play_audio(audio_data)
+            play_audio(audio_data, enable_streaming=ENABLE_STREAMING)
             self.current_transcript = ""
             self.partial_transcript = ""
             self.last_final_time = None
