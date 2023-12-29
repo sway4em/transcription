@@ -50,7 +50,8 @@ def synthesize_speech(text, output_format='mp3', voice='Brian', enable_streaming
                                               OutputFormat=output_format,
                                               Text=text)
 
-    synthesis_time = time.time() - start_time  # Measure the time taken
+    end_time = time.time() - start_time  # Measure the time taken
+    print(f"Time taken to synthesize speech: {end_time - start_time} seconds")
 
     if enable_streaming:
         if "AudioStream" in response:
@@ -79,6 +80,8 @@ def save_audio_to_file(audio_data, file_path='response.mp3'):
 def play_audio(file_path, enable_streaming=False):
     global is_playing_audio
     is_playing_audio = True
+    print("Playing audio...")
+    start_time = time.time()  # Start the timer
     try:
         audio_segment = AudioSegment.from_file(file_path, format='mp3')
     except Exception as e:
@@ -98,6 +101,8 @@ def play_audio(file_path, enable_streaming=False):
         print("Error playing audio:", e)
     finally:
         is_playing_audio = False
+        end_time = time.time() - start_time
+        print(f"Time taken to play audio: {end_time} seconds")
 
 message = ""
                 
@@ -131,31 +136,38 @@ class MyEventHandler(TranscriptResultStreamHandler):
             response = get_response(self.current_transcript)
             print("Response:", response)
             print("Synthesizing response...")
-            
+            start_time = time.time()  # Start the timer
             _, audio_file_path = synthesize_speech(response, enable_streaming=ENABLE_STREAMING)
-
+            end_time = time.time() - start_time  # Measure the time taken
+            print(f"Time taken to synthesize speech: {end_time - start_time} seconds")
             # Play audio from the saved file
             print("Playing audio response...")
             play_audio(audio_file_path, enable_streaming=ENABLE_STREAMING)
 
             # Call Gooey API with the saved audio and predefined image URL
             print("Calling Gooey API...")
+            start_time = time.time()  # Start the timer
             call_gooey_api(audio_file_path, "https://storage.googleapis.com/dara-c1b52.appspot.com/daras_ai/media/8c1b1f02-5f66-11ed-a8a9-02420a0000aa/ezgif-5-4ccc215641.gif")
-
+            end_time = time.time() - start_time  # Measure the time taken
+            print(f"Time taken to finish Gooey actions: {end_time - start_time} seconds")
             self.current_transcript = ""
             self.partial_transcript = ""
             self.last_final_time = None
 
     def check_for_name(self, text):
+        print("Checking for name...")
         output = ner({"inputs": text})
         for out in output:
             if out["entity_group"] == "PER":
                 self.person_name = out["word"]
                 print(f"The person's name is {self.person_name}")
                 break  # Stop after identifying the name
+        print("Name check complete")
+        print(output)
+
 def call_gooey_api(audio_file_path, image_url):
     print("Preparing to call Gooey API...")
-
+    start_time = time.time()  # Start the timer
     with open(audio_file_path, "rb") as audio_file:
         files = [
             ("input_face", (image_url.split("/")[-1], requests.get(image_url).content)),
@@ -172,8 +184,11 @@ def call_gooey_api(audio_file_path, image_url):
 
     assert response.ok, response.content
     result = response.json()
-
+    end_time = time.time() - start_time  # Measure the time taken
+    print(f"Time taken to call Gooey API: {end_time - start_time} seconds")
     # Download the video
+    print("Downloading video...")
+    start_time = time.time()  # Start the timer
     video_url = result["output"]["output_video"]
     video_response = requests.get(video_url)
     with open('output_video.mp4', 'wb') as video_file:
@@ -181,6 +196,8 @@ def call_gooey_api(audio_file_path, image_url):
         print("Video downloaded as 'output_video.mp4'")
 
     print("Gooey API Response:", response.status_code, result)
+    end_time = time.time() - start_time  # Measure the time taken
+    print(f"Time taken to download video: {end_time - start_time} seconds")
     return result
 
 
