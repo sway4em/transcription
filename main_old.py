@@ -15,8 +15,8 @@ ENABLE_STREAMING = False
 synthesis_time = 0
 API_URL = "https://api-inference.huggingface.co/models/dslim/bert-base-NER"
 headers = {"Authorization":f"Bearer {os.environ['HF_KEY']}"}
-
-def query(payload):
+is_playing_audio = False
+def ner(payload):
 	response = requests.post(API_URL, headers=headers, json=payload)
 	return response.json()
 client = OpenAI(
@@ -38,7 +38,7 @@ def get_response(message):
     )
     return chat_completion.choices[0].message.content
 
-def synthesize_speech(text, output_format='mp3', voice='Joanna', enable_streaming=False):
+def synthesize_speech(text, output_format='mp3', voice='Brian', enable_streaming=False):
     start_time = time.time()  # Start the timer
 
     polly_client = boto3.client('polly', region_name='us-west-2')
@@ -60,6 +60,8 @@ def synthesize_speech(text, output_format='mp3', voice='Joanna', enable_streamin
             raise Exception("Could not synthesize audio from Polly response.")
 
 def play_audio(audio_data, enable_streaming=False):
+    global is_playing_audio
+    is_playing_audio = True  # Set flag to indicate audio playback is starting
     try:
         if enable_streaming:
             with closing(audio_data) as stream:
@@ -67,6 +69,7 @@ def play_audio(audio_data, enable_streaming=False):
         audio_segment = AudioSegment.from_file(BytesIO(audio_data), format='mp3')
     except Exception as e:
         print("Error converting audio data:", e)
+        is_playing_audio = False  # Reset flag in case of error
         return
 
     try:
@@ -76,9 +79,11 @@ def play_audio(audio_data, enable_streaming=False):
             bytes_per_sample=audio_segment.sample_width,
             sample_rate=audio_segment.frame_rate
         )
-        play_obj.wait_done()
+        play_obj.wait_done()  # Wait for the playback to finish
     except Exception as e:
         print("Error playing audio:", e)
+    finally:
+        is_playing_audio = False
 
 
 message = ""
@@ -122,7 +127,7 @@ class MyEventHandler(TranscriptResultStreamHandler):
             self.last_final_time = None
 
     def check_for_name(self, text):
-        output = query({"inputs": text})
+        output = ner({"inputs": text})
         for out in output:
             if out["entity_group"] == "PER":
                 self.person_name = out["word"]
@@ -136,7 +141,9 @@ async def mic_stream():
     input_queue = asyncio.Queue()
 
     def callback(indata, frame_count, time_info, status):
-        loop.call_soon_threadsafe(input_queue.put_nowait, (bytes(indata), status))
+        if not is_playing_audio:  # Check if audio is being played back
+            loop.call_soon_threadsafe(input_queue.put_nowait, (bytes(indata), status))
+
 
     # Be sure to use the correct parameters for the audio stream that matches
     # the audio formats described for the source language you'll be using:
