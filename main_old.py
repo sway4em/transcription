@@ -11,14 +11,17 @@ import time
 from amazon_transcribe.client import TranscribeStreamingClient
 from amazon_transcribe.handlers import TranscriptResultStreamHandler
 from amazon_transcribe.model import TranscriptEvent
+import json
 ENABLE_STREAMING = False
 synthesis_time = 0
 API_URL = "https://api-inference.huggingface.co/models/dslim/bert-base-NER"
 headers = {"Authorization":f"Bearer {os.environ['HF_KEY']}"}
 is_playing_audio = False
+
 def ner(payload):
 	response = requests.post(API_URL, headers=headers, json=payload)
 	return response.json()
+
 client = OpenAI(
     # This is the default and can be omitted
     
@@ -38,7 +41,7 @@ def get_response(message):
     )
     return chat_completion.choices[0].message.content
 
-def synthesize_speech(text, output_format='mp3', voice='Brian', enable_streaming=False):
+def synthesize_speech(text, output_format='mp3', voice='Brian', enable_streaming=False, file_path='response.mp3'):
     start_time = time.time()  # Start the timer
 
     polly_client = boto3.client('polly', region_name='us-west-2')
@@ -46,30 +49,41 @@ def synthesize_speech(text, output_format='mp3', voice='Brian', enable_streaming
     response = polly_client.synthesize_speech(VoiceId=voice,
                                               OutputFormat=output_format,
                                               Text=text)
+
     synthesis_time = time.time() - start_time  # Measure the time taken
 
     if enable_streaming:
         if "AudioStream" in response:
-            return response['AudioStream']
+            return response['AudioStream'], file_path
         else:
             raise Exception("Could not stream audio from Polly response.")
     else:
         if "AudioStream" in response:
-            return response['AudioStream'].read()
+            audio_data = response['AudioStream'].read()
+
+            # Save the audio data to a file
+            save_audio_to_file(audio_data, file_path)
+
+            return audio_data, file_path
         else:
             raise Exception("Could not synthesize audio from Polly response.")
 
-def play_audio(audio_data, enable_streaming=False):
+def save_audio_to_file(audio_data, file_path='response.mp3'):
+    """
+    Save the audio data to a file.
+    """
+    with open(file_path, 'wb') as file:
+        file.write(audio_data)
+    print(f"Audio saved to {file_path}")
+
+def play_audio(file_path, enable_streaming=False):
     global is_playing_audio
-    is_playing_audio = True  # Set flag to indicate audio playback is starting
+    is_playing_audio = True
     try:
-        if enable_streaming:
-            with closing(audio_data) as stream:
-                audio_data = stream.read()
-        audio_segment = AudioSegment.from_file(BytesIO(audio_data), format='mp3')
+        audio_segment = AudioSegment.from_file(file_path, format='mp3')
     except Exception as e:
-        print("Error converting audio data:", e)
-        is_playing_audio = False  # Reset flag in case of error
+        print("Error converting audio file:", e)
+        is_playing_audio = False
         return
 
     try:
@@ -79,12 +93,11 @@ def play_audio(audio_data, enable_streaming=False):
             bytes_per_sample=audio_segment.sample_width,
             sample_rate=audio_segment.frame_rate
         )
-        play_obj.wait_done()  # Wait for the playback to finish
+        play_obj.wait_done()
     except Exception as e:
         print("Error playing audio:", e)
     finally:
         is_playing_audio = False
-
 
 message = ""
                 
@@ -113,15 +126,22 @@ class MyEventHandler(TranscriptResultStreamHandler):
                 if not self.person_name:
                     self.check_for_name(self.current_transcript)
 
-        if self.last_final_time and (now - self.last_final_time) > self.silence_threshold:
+        if self.last_final_time and (now - self.last_final_time) > 4:
             print("Speech considered complete after silence.")
             response = get_response(self.current_transcript)
             print("Response:", response)
             print("Synthesizing response...")
-            audio_data = synthesize_speech(response, enable_streaming=ENABLE_STREAMING)
-            print(f"Time taken for synthesis: {synthesis_time:.2f} seconds")
+            
+            _, audio_file_path = synthesize_speech(response, enable_streaming=ENABLE_STREAMING)
+
+            # Play audio from the saved file
             print("Playing audio response...")
-            play_audio(audio_data, enable_streaming=ENABLE_STREAMING)
+            play_audio(audio_file_path, enable_streaming=ENABLE_STREAMING)
+
+            # Call Gooey API with the saved audio and predefined image URL
+            print("Calling Gooey API...")
+            call_gooey_api(audio_file_path, "https://storage.googleapis.com/dara-c1b52.appspot.com/daras_ai/media/8c1b1f02-5f66-11ed-a8a9-02420a0000aa/ezgif-5-4ccc215641.gif")
+
             self.current_transcript = ""
             self.partial_transcript = ""
             self.last_final_time = None
@@ -133,6 +153,36 @@ class MyEventHandler(TranscriptResultStreamHandler):
                 self.person_name = out["word"]
                 print(f"The person's name is {self.person_name}")
                 break  # Stop after identifying the name
+def call_gooey_api(audio_file_path, image_url):
+    print("Preparing to call Gooey API...")
+
+    with open(audio_file_path, "rb") as audio_file:
+        files = [
+            ("input_face", (image_url.split("/")[-1], requests.get(image_url).content)),
+            ("input_audio", (audio_file_path, audio_file)),
+        ]
+        payload = {}
+
+        response = requests.post(
+            "https://api.gooey.ai/v2/Lipsync/form/",
+            headers={"Authorization": "Bearer " + os.environ["GOOEY_API_KEY"]},
+            files=files,
+            data={"json": json.dumps(payload)},
+        )
+
+    assert response.ok, response.content
+    result = response.json()
+
+    # Download the video
+    video_url = result["output"]["output_video"]
+    video_response = requests.get(video_url)
+    with open('output_video.mp4', 'wb') as video_file:
+        video_file.write(video_response.content)
+        print("Video downloaded as 'output_video.mp4'")
+
+    print("Gooey API Response:", response.status_code, result)
+    return result
+
 
 async def mic_stream():
     # This function wraps the raw input stream from the microphone forwarding
