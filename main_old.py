@@ -11,7 +11,14 @@ import time
 from amazon_transcribe.client import TranscribeStreamingClient
 from amazon_transcribe.handlers import TranscriptResultStreamHandler
 from amazon_transcribe.model import TranscriptEvent
+import amazon_transcribe
+import cv2
 import json
+from moviepy.editor import *
+from moviepy.editor import VideoFileClip
+import pygame
+import sys
+
 ENABLE_STREAMING = False
 synthesis_time = 0
 API_URL = "https://api-inference.huggingface.co/models/dslim/bert-base-NER"
@@ -28,6 +35,25 @@ client = OpenAI(
     api_key=os.environ["OPENAI_API_KEY"]
 )
 polly_client = boto3.client('polly', region_name='us-west-2')
+
+
+def play_video(file_path):
+    cap = cv2.VideoCapture(file_path)
+    if not cap.isOpened():
+        print("Error opening video file")
+        return
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            cv2.imshow('Video', frame)
+            if cv2.waitKey(25) & 0xFF == ord('q'):
+                break
+        else:
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
 
 def get_response(message):
     chat_completion = client.chat.completions.create(
@@ -198,6 +224,8 @@ def call_gooey_api(audio_file_path, image_url):
     print("Gooey API Response:", response.status_code, result)
     end_time = time.time() - start_time  # Measure the time taken
     print(f"Time taken to download video: {end_time - start_time} seconds")
+    print("Playing downloaded video...")
+    play_video_moviepy("output_video.mp4")
     return result
 
 
@@ -239,20 +267,26 @@ async def write_chunks(stream):
 
 
 async def basic_transcribe():
-    # Setup up our client with our chosen AWS region
-    client = TranscribeStreamingClient(region="us-west-2")
-
-    # Start transcription to generate our async stream
-    stream = await client.start_stream_transcription(
-        language_code="en-US",
-        media_sample_rate_hz=16000,
-        media_encoding="pcm",
-    )
-
-    # Instantiate our handler and start processing events
-    handler = MyEventHandler(stream.output_stream)
-    await asyncio.gather(write_chunks(stream), handler.handle_events())
-
+    await start_transcription()
+async def start_transcription():
+    try:
+        client = TranscribeStreamingClient(region="us-west-2")
+        stream = await client.start_stream_transcription(
+            language_code="en-US",
+            media_sample_rate_hz=16000,
+            media_encoding="pcm",
+        )
+        handler = MyEventHandler(stream.output_stream)
+        await asyncio.gather(write_chunks(stream), handler.handle_events())
+    except amazon_transcribe.exceptions.BadRequestException:
+        print("Transcription stream timeout. Restarting transcription...")
+        await start_transcription()  # Restart transcription on timeout
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        
+def play_video_moviepy(file_path):
+    video = VideoFileClip(file_path)
+    video.preview()
 
 loop = asyncio.get_event_loop()
 
