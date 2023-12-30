@@ -12,12 +12,9 @@ from amazon_transcribe.client import TranscribeStreamingClient
 from amazon_transcribe.handlers import TranscriptResultStreamHandler
 from amazon_transcribe.model import TranscriptEvent
 import amazon_transcribe
-import cv2
 import json
 from moviepy.editor import *
 from moviepy.editor import VideoFileClip
-import pygame
-import sys
 
 ENABLE_STREAMING = False
 synthesis_time = 0
@@ -35,25 +32,6 @@ client = OpenAI(
     api_key=os.environ["OPENAI_API_KEY"]
 )
 polly_client = boto3.client('polly', region_name='us-west-2')
-
-
-def play_video(file_path):
-    cap = cv2.VideoCapture(file_path)
-    if not cap.isOpened():
-        print("Error opening video file")
-        return
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if ret:
-            cv2.imshow('Video', frame)
-            if cv2.waitKey(25) & 0xFF == ord('q'):
-                break
-        else:
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
 
 def get_response(message):
     chat_completion = client.chat.completions.create(
