@@ -7,3 +7,4 @@ pydub
 simpleaudio
 pinecone-client
 moviepy
+pygame

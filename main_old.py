@@ -171,6 +171,8 @@ class MyEventHandler(TranscriptResultStreamHandler):
 
 def call_gooey_api(audio_file_path, image_url):
     print("Preparing to call Gooey API...")
+    global is_playing_audio
+    is_playing_audio = True
     start_time = time.time()  # Start the timer
     with open(audio_file_path, "rb") as audio_file:
         files = [
@@ -204,6 +206,7 @@ def call_gooey_api(audio_file_path, image_url):
     print(f"Time taken to download video: {end_time - start_time} seconds")
     print("Playing downloaded video...")
     play_video_moviepy("output_video.mp4")
+    is_playing_audio = False
     return result
 
 
