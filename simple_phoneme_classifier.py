@@ -39,3 +39,4 @@ def classify_phonemes(text):
 sample_text = input("Enter a sentence: ") 
 out = classify_phonemes(sample_text)
 print(out)
+
